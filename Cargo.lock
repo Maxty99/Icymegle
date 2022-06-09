@@ -903,6 +903,7 @@ checksum = "13d13241d5ed32846bbcffaf60e27e7ceebb60cf16d791ff00d582f0d4d1b07b"
 dependencies = [
  "futures",
  "log",
+ "tokio",
  "wasm-bindgen-futures",
  "wasm-timer",
 ]
@@ -941,6 +942,7 @@ name = "iced_omegle_client"
 version = "0.1.0"
 dependencies = [
  "iced",
+ "iced_native",
  "omegalul",
 ]
 
@@ -1422,8 +1424,7 @@ dependencies = [
 [[package]]
 name = "omegalul"
 version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe5a87e8004c90ebb0aee96c0a326b703f4f8d8f7beffb682fba368a619685a5"
+source = "git+https://github.com/Maxty99/omegalul-rs?rev=25ab4850#25ab485025097e6c03185b4c9db769c8b67a6e49"
 dependencies = [
  "json",
  "rand",
