@@ -54,6 +54,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-stream"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dad5c83079eae9969be7fadefe640a1c566901f05ff91ab221de4b6f68d9507e"
+dependencies = [
+ "async-stream-impl",
+ "futures-core",
+]
+
+[[package]]
+name = "async-stream-impl"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10f203db73a71dfa2fb6dd22763990fa26f3d2625a6da2da900d23b87d26be27"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -941,6 +962,7 @@ dependencies = [
 name = "iced_omegle_client"
 version = "0.1.0"
 dependencies = [
+ "futures-core",
  "iced",
  "iced_native",
  "omegalul",
@@ -1424,8 +1446,10 @@ dependencies = [
 [[package]]
 name = "omegalul"
 version = "0.1.4"
-source = "git+https://github.com/Maxty99/omegalul-rs?rev=25ab4850#25ab485025097e6c03185b4c9db769c8b67a6e49"
+source = "git+https://github.com/Maxty99/omegalul-rs?rev=46f0f8efcaba3fa873ec45ac0317dc0b670fd4a5#46f0f8efcaba3fa873ec45ac0317dc0b670fd4a5"
 dependencies = [
+ "async-stream",
+ "futures-core",
  "json",
  "rand",
  "reqwest",
