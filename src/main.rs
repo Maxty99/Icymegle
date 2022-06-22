@@ -1,8 +1,14 @@
-use iced::pure::widget::Column;
+#![cfg_attr(
+    all(target_os = "windows", not(debug_assertions),),
+    windows_subsystem = "windows"
+)] //Only do this on windows on release
+mod style;
+
+use iced::pure::widget::{checkbox, Column};
 use iced::pure::{
-    button, column, container, row, scrollable, text, text_input, Application, Element,
+    button, checkbox, column, container, row, scrollable, text, text_input, Application, Element,
 };
-use iced::{executor, Alignment, Command, Length, Settings, Subscription};
+use iced::{alignment, executor, Alignment, Command, Length, Settings, Subscription};
 
 use iced_native::subscription;
 use omegalul::server::{get_event_stream, get_random_server, Chat, ChatEvent, Server};
@@ -17,6 +23,7 @@ enum ChatMessage {
 #[derive(Debug, Clone)]
 pub enum AppMessage {
     UpdateChatMessage(String),
+    UpdateInterestString(String),
     UpdateServer(Server),
     UpdateChat(Option<Chat>),
     HandleChatEvent(Vec<ChatEvent>),
@@ -30,11 +37,13 @@ pub enum AppMessage {
 
 #[derive(Default)]
 struct ChatApp {
+    theme: style::Theme,
     chat_message: String,
     message_history: Vec<ChatMessage>,
     server: Option<Server>,
     chat_session: Option<Chat>,
     stranger_typing: bool,
+    interests_string: String,
 }
 
 impl Application for ChatApp {
@@ -66,6 +75,18 @@ impl Application for ChatApp {
         println!("{message:?}");
         match message {
             AppMessage::UpdateChatMessage(new_value) => self.chat_message = new_value,
+            AppMessage::UpdateInterestString(new_value) => {
+                self.interests_string = new_value.clone();
+                let interests_vec: Vec<String> = new_value
+                    .split(",")
+                    .into_iter()
+                    .map(|val| String::from(val.trim()))
+                    .collect();
+                match &mut self.server {
+                    Some(server) => server.set_interests(interests_vec),
+                    None => {}
+                }
+            }
             AppMessage::SendChatMessage => {}
             AppMessage::UpdateServer(server) => self.server = Some(server),
             AppMessage::UpdateChat(chat_option) => {
@@ -90,9 +111,11 @@ impl Application for ChatApp {
                             self.message_history.push(ChatMessage::Stranger(msg));
                             self.stranger_typing = false;
                         }
-                        ChatEvent::CommonLikes(likes) => self
-                            .message_history
-                            .push(ChatMessage::System(format!("Common likes are {likes:?}"))),
+                        ChatEvent::CommonLikes(likes) => {
+                            self.message_history.push(ChatMessage::System(format!(
+                                "Looks like you have stuff in common {likes:?}"
+                            )))
+                        }
                         ChatEvent::Connected => self
                             .message_history
                             .push(ChatMessage::System("Connected to stranger".to_string())),
@@ -114,6 +137,8 @@ impl Application for ChatApp {
             }
             AppMessage::Disconnect => {
                 let chat_clone = self.chat_session.clone();
+                self.message_history
+                    .push(ChatMessage::System("You have disconnected".to_string()));
                 return Command::perform(
                     async move { chat_clone.unwrap().disconnect().await },
                     |_| AppMessage::UpdateChat(None),
@@ -144,32 +169,60 @@ impl Application for ChatApp {
                 self.chat_message.as_str(),
                 AppMessage::UpdateChatMessage,
             )
+            .style(self.theme)
             .on_submit(AppMessage::SendChat)
-            .width(Length::FillPortion(7)),
+            .width(Length::FillPortion(7))
+            .padding(10),
             None => text_input(
-                "Write a message",
+                " Write a message",
                 self.chat_message.as_str(),
                 AppMessage::UpdateChatMessage,
             )
-            .width(Length::FillPortion(7)),
+            .style(self.theme)
+            .width(Length::FillPortion(7))
+            .padding(10),
         };
 
         let control_button = match self.chat_session {
-            Some(_) => button("Disconnect")
-                .width(Length::FillPortion(3))
-                .on_press(AppMessage::Disconnect),
-            None => button("New Chat")
-                .width(Length::FillPortion(3))
-                .on_press(AppMessage::StartNewChat),
+            Some(_) => button(
+                text("Disconnect")
+                    .vertical_alignment(alignment::Vertical::Center)
+                    .horizontal_alignment(alignment::Horizontal::Center),
+            )
+            .width(Length::FillPortion(3))
+            .on_press(AppMessage::Disconnect)
+            .style(self.theme),
+            None => button(
+                text("New Chat")
+                    .vertical_alignment(alignment::Vertical::Center)
+                    .horizontal_alignment(alignment::Horizontal::Center),
+            )
+            .width(Length::FillPortion(3))
+            .on_press(AppMessage::StartNewChat)
+            .style(self.theme),
         };
 
-        let controls = row()
+        let chat_row = row()
             .spacing(10)
-            .padding(10)
             .height(Length::Units(50))
             .width(Length::Fill)
             .push(chat_input)
             .push(control_button);
+
+        let interests = text_input(
+            " Type some comma separeted interests (interest1, interest2, ...)",
+            self.interests_string.as_str(),
+            AppMessage::UpdateInterestString,
+        )
+        .width(Length::Fill)
+        .padding(10)
+        .style(style::InterestsTextInput);
+
+        let controls = column()
+            .width(Length::Fill)
+            .spacing(0)
+            .push(interests)
+            .push(chat_row);
 
         let chat_history: Column<AppMessage> = self
             .message_history
@@ -182,12 +235,24 @@ impl Application for ChatApp {
                     .align_items(Alignment::Start),
                 |column, chat_message| {
                     let text = match chat_message {
-                        ChatMessage::You(chat_message) => text(format!("You: {chat_message}")),
+                        ChatMessage::You(chat_message) => {
+                            let label = text("You: ");
+                            let text = text(chat_message);
+                            row()
+                                .push(container(label).style(style::YouContainer))
+                                .push(text)
+                        }
                         ChatMessage::Stranger(chat_message) => {
-                            text(format!("Stranger: {chat_message}"))
+                            let label = text("Stranger: ");
+                            let text = text(chat_message);
+                            row()
+                                .push(container(label).style(style::StrangerContainer))
+                                .push(text)
                         }
                         ChatMessage::System(chat_message) => {
-                            text(format!("System: {chat_message}"))
+                            let label = text("System: ");
+                            let text = text(chat_message);
+                            row().push(label).push(text)
                         }
                     };
                     column.push(text)
@@ -207,6 +272,7 @@ impl Application for ChatApp {
             .center_y()
             .height(Length::Fill)
             .width(Length::Fill)
+            .style(self.theme)
             .into()
     }
 

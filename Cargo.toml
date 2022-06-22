@@ -15,6 +15,6 @@ strip = true
 
 [dependencies]
 iced =  { version = "0.4.0", features = ["pure", "tokio"] }
-omegalul = {git = "https://github.com/Maxty99/omegalul-rs", rev = "46f0f8efcaba3fa873ec45ac0317dc0b670fd4a5"}
+omegalul = {git = "https://github.com/Maxty99/omegalul-rs", rev = "165b160fdd3209766a13892f2e6c60606b6c2169"}
 iced_native = "0.5.1"
-futures-core = "0.3.21"
+dark-light = "0.2.2"
