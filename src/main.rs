@@ -1,13 +1,14 @@
 #![cfg_attr(
     all(target_os = "windows", not(debug_assertions),),
     windows_subsystem = "windows"
-)] //Only do this on windows on release
+)] // Only do this on windows on release
 mod style;
 
-use iced::pure::widget::{checkbox, Column};
+use iced::pure::widget::Column;
 use iced::pure::{
-    button, checkbox, column, container, row, scrollable, text, text_input, Application, Element,
+    button, column, container, row, scrollable, text, text_input, Application, Element,
 };
+use iced::time::{every, Duration, Instant};
 use iced::{alignment, executor, Alignment, Command, Length, Settings, Subscription};
 
 use iced_native::subscription;
@@ -28,11 +29,25 @@ pub enum AppMessage {
     UpdateChat(Option<Chat>),
     HandleChatEvent(Vec<ChatEvent>),
     SendChat,
+    StartTyping,
+    StopTyping,    // Used to send the command
+    StoppedTyping, // Used when command finishes
     ChatSent(String),
-    ErrorOccured, //Cant actually pass the error since I cant clone it
-    SendChatMessage,
+    ErrorOccured, // Cant actually pass the error since I cant clone it
     Disconnect,
     StartNewChat,
+}
+
+#[derive(Debug, Clone)]
+enum TypingState {
+    Typing(Instant),
+    Idle,
+}
+
+impl Default for TypingState {
+    fn default() -> Self {
+        TypingState::Idle
+    }
 }
 
 #[derive(Default)]
@@ -43,6 +58,7 @@ struct ChatApp {
     server: Option<Server>,
     chat_session: Option<Chat>,
     stranger_typing: bool,
+    you_typing: TypingState,
     interests_string: String,
 }
 
@@ -74,7 +90,24 @@ impl Application for ChatApp {
     fn update(&mut self, message: Self::Message) -> Command<AppMessage> {
         println!("{message:?}");
         match message {
-            AppMessage::UpdateChatMessage(new_value) => self.chat_message = new_value,
+            AppMessage::UpdateChatMessage(new_value) => {
+                self.chat_message = new_value;
+                match self.you_typing {
+                    TypingState::Typing(_) => self.you_typing = TypingState::Typing(Instant::now()),
+                    TypingState::Idle => {
+                        let chat_clone = self.chat_session.clone();
+                        return Command::perform(
+                            async move {
+                                match chat_clone {
+                                    Some(chat) => chat.start_typing().await,
+                                    None => {}
+                                }
+                            },
+                            |_| AppMessage::StartTyping,
+                        );
+                    }
+                }
+            }
             AppMessage::UpdateInterestString(new_value) => {
                 self.interests_string = new_value.clone();
                 let interests_vec: Vec<String> = new_value
@@ -87,10 +120,12 @@ impl Application for ChatApp {
                     None => {}
                 }
             }
-            AppMessage::SendChatMessage => {}
+
             AppMessage::UpdateServer(server) => self.server = Some(server),
             AppMessage::UpdateChat(chat_option) => {
                 self.chat_session = chat_option.clone();
+                self.you_typing = TypingState::Idle;
+                self.stranger_typing = false;
             }
             AppMessage::StartNewChat => {
                 let server_clone = self.server.clone();
@@ -123,6 +158,8 @@ impl Application for ChatApp {
                             self.message_history
                                 .push(ChatMessage::System("Stranger has disconnected".to_string()));
                             self.chat_session = None;
+                            self.you_typing = TypingState::Idle;
+                            self.stranger_typing = false;
                         }
                         ChatEvent::Typing => self.stranger_typing = true,
                         ChatEvent::StoppedTyping => self.stranger_typing = false,
@@ -156,7 +193,31 @@ impl Application for ChatApp {
                     |msg| AppMessage::ChatSent(msg),
                 );
             }
-            AppMessage::ChatSent(message) => self.message_history.push(ChatMessage::You(message)),
+            AppMessage::ChatSent(message) => {
+                self.message_history.push(ChatMessage::You(message));
+                self.you_typing = TypingState::Idle;
+            }
+            AppMessage::StartTyping => {
+                self.you_typing = TypingState::Typing(Instant::now());
+            }
+            AppMessage::StopTyping => {
+                let chat_clone = self.chat_session.clone();
+                if let TypingState::Typing(instant) = self.you_typing {
+                    if instant.elapsed() > Duration::from_secs(4) {
+                        // If I was just typing dont stop typing just keep checking every 5 seconds
+                        return Command::perform(
+                            async move {
+                                match chat_clone {
+                                    Some(chat) => chat.stop_typing().await,
+                                    None => {}
+                                }
+                            },
+                            |_| AppMessage::StoppedTyping,
+                        );
+                    }
+                }
+            }
+            AppMessage::StoppedTyping => self.you_typing = TypingState::Idle,
         }
 
         Command::none()
@@ -277,14 +338,21 @@ impl Application for ChatApp {
     }
 
     fn subscription(&self) -> Subscription<AppMessage> {
-        match &self.chat_session {
+        let message_subscription = match &self.chat_session {
             Some(chat) => subscription::run("Omegle Event Stream", get_event_stream(chat.clone()))
                 .map(|event| match event {
                     Ok(event_list) => AppMessage::HandleChatEvent(event_list),
                     Err(_) => AppMessage::ErrorOccured,
                 }),
             None => Subscription::none(),
-        }
+        };
+
+        let typing_subscription = match &self.you_typing {
+            TypingState::Typing(_) => every(Duration::from_secs(5)).map(|_| AppMessage::StopTyping),
+            TypingState::Idle => Subscription::none(),
+        };
+
+        Subscription::batch(vec![message_subscription, typing_subscription])
     }
 }
 

@@ -1,5 +1,5 @@
 use iced::{
-    pure::widget::{button, container, scrollable, text_input},
+    pure::widget::{button, container, text_input},
     Background, Color, Vector,
 };
 
