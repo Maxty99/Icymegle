@@ -3,6 +3,16 @@
 version = 3
 
 [[package]]
+name = "Icymegle"
+version = "1.0.0"
+dependencies = [
+ "dark-light",
+ "iced",
+ "iced_native",
+ "omegalul",
+]
+
+[[package]]
 name = "ab_glyph"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1155,7 +1165,6 @@ dependencies = [
  "iced_futures",
  "iced_graphics",
  "iced_native",
- "iced_pure",
  "iced_wgpu",
  "iced_winit",
  "thiserror",
@@ -1193,7 +1202,6 @@ dependencies = [
  "bytemuck",
  "glam",
  "iced_native",
- "iced_pure",
  "iced_style",
  "raw-window-handle 0.4.3",
  "thiserror",
@@ -1211,27 +1219,6 @@ dependencies = [
  "num-traits",
  "twox-hash",
  "unicode-segmentation",
-]
-
-[[package]]
-name = "iced_omegle_client"
-version = "0.1.0"
-dependencies = [
- "dark-light",
- "iced",
- "iced_native",
- "omegalul",
-]
-
-[[package]]
-name = "iced_pure"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80aeaecadfd6832c2c787cbdfd357adc256a51c55d68142d852037451e72f393"
-dependencies = [
- "iced_native",
- "iced_style",
- "num-traits",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 [package]
-name = "iced_omegle_client"
-version = "0.1.0"
+name = "Icymegle"
+version = "1.0.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -14,7 +14,7 @@ strip = true
 
 
 [dependencies]
-iced =  { version = "0.4.0", features = ["pure", "tokio"] }
+iced =  { version = "0.4.0", features = ["tokio"] }
 omegalul = {git = "https://github.com/Maxty99/omegalul-rs", rev = "165b160fdd3209766a13892f2e6c60606b6c2169"}
 iced_native = "0.5.1"
 dark-light = "0.2.2"
