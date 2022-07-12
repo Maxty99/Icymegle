@@ -1,7 +1,4 @@
-#![cfg_attr(
-    all(target_os = "windows", not(debug_assertions),),
-    windows_subsystem = "windows"
-)] // Only do this on windows on release
+#![windows_subsystem = "windows"]
 mod style;
 
 use iced::time::{every, Duration, Instant};
