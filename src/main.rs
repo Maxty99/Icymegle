@@ -188,16 +188,18 @@ impl Application for ChatApp {
                 );
             }
             AppMessage::SendChat => {
-                let chat_clone = self.chat_session.clone();
-                let message = self.chat_message.clone();
-                self.chat_message = "".to_string();
-                return Command::perform(
-                    async move {
-                        chat_clone.unwrap().send_message(&message).await;
-                        message
-                    },
-                    |msg| AppMessage::ChatSent(msg),
-                );
+                if !self.chat_message.is_empty() {
+                    let chat_clone = self.chat_session.clone();
+                    let message = self.chat_message.clone();
+                    self.chat_message = "".to_string();
+                    return Command::perform(
+                        async move {
+                            chat_clone.unwrap().send_message(&message).await;
+                            message
+                        },
+                        |msg| AppMessage::ChatSent(msg),
+                    );
+                }
             }
             AppMessage::ChatSent(message) => {
                 self.message_history.push(ChatMessage::You(message));
