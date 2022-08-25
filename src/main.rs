@@ -357,7 +357,7 @@ impl Application for ChatApp {
 
     fn subscription(&self) -> Subscription<AppMessage> {
         let message_subscription = match &self.chat_session {
-            Some(chat) => subscription::run("Omegle Event Stream", get_event_stream(chat.clone()))
+            Some(chat) => subscription::run(chat.client_id.clone(), get_event_stream(chat.clone()))
                 .map(|event| match event {
                     Ok(event_list) => AppMessage::HandleChatEvent(event_list),
                     Err(err) => AppMessage::ErrorOccured(format!("{err}")),
