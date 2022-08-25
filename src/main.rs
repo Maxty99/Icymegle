@@ -30,7 +30,7 @@ pub enum AppMessage {
     StartTyping,
     StopTyping,    // Used to send the command
     StoppedTyping, // Used when command finishes
-    ErrorOccured,  // Cant actually pass the error since I cant clone it
+    ErrorOccured(String),
     Disconnect,
 }
 
@@ -139,11 +139,13 @@ impl Application for ChatApp {
                     async move { server_clone.unwrap().start_chat().await },
                     |chat| match chat {
                         Ok(chat) => AppMessage::UpdateChat(Some(chat)),
-                        Err(_) => AppMessage::ErrorOccured,
+                        Err(err) => AppMessage::ErrorOccured(format!("{err}")),
                     },
                 );
             }
-            AppMessage::ErrorOccured => {} //Nothing for now
+            AppMessage::ErrorOccured(error_string) => {
+                self.message_history.push(ChatMessage::System(error_string))
+            }
             AppMessage::HandleChatEvent(events) => {
                 for event in events {
                     match event {
@@ -358,7 +360,7 @@ impl Application for ChatApp {
             Some(chat) => subscription::run("Omegle Event Stream", get_event_stream(chat.clone()))
                 .map(|event| match event {
                     Ok(event_list) => AppMessage::HandleChatEvent(event_list),
-                    Err(_) => AppMessage::ErrorOccured,
+                    Err(err) => AppMessage::ErrorOccured(format!("{err}")),
                 }),
             None => Subscription::none(),
         };
