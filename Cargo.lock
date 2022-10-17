@@ -1847,7 +1847,7 @@ dependencies = [
 [[package]]
 name = "omegalul"
 version = "0.1.4"
-source = "git+https://github.com/Maxty99/omegalul-rs?rev=165b160fdd3209766a13892f2e6c60606b6c2169#165b160fdd3209766a13892f2e6c60606b6c2169"
+source = "git+https://github.com/Maxty99/omegalul-rs?rev=4cf8a88131a79d13331f452629a01e23efe51586#4cf8a88131a79d13331f452629a01e23efe51586"
 dependencies = [
  "async-stream",
  "futures-core",
