@@ -79,6 +79,8 @@ impl Application for ChatApp {
             Self::default(),
             Command::perform(
                 async {
+                    // TODO: Simplify initialization, don't get server and server name in new function
+                    // use lazy once cell
                     let server_name = get_random_server().await.unwrap_or("front1".to_string());
 
                     Server::new(&server_name, vec![])
@@ -94,6 +96,7 @@ impl Application for ChatApp {
 
     fn update(&mut self, message: Self::Message) -> Command<AppMessage> {
         println!("{message:?}");
+        // TODO: Try to get rid of christmas trees by simplifying code a tad bit
         match message {
             AppMessage::UpdateChatMessage(new_value) => {
                 self.chat_message = new_value;
