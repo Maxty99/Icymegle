@@ -54,7 +54,7 @@ impl button::StyleSheet for DarkButton {
     fn active(&self) -> button::Style {
         button::Style {
             background: Color::from([0.466, 0.569, 0.820]).into(),
-            text_color: Color::from([0.2, 0.2, 0.2]).into(),
+            text_color: Color::from([0.2, 0.2, 0.2]),
             ..Default::default()
         }
     }
@@ -65,7 +65,7 @@ impl button::StyleSheet for DarkButton {
         button::Style {
             shadow_offset: Vector::new(0.0, 0.0),
             background: Color::from([0.466, 0.569, 0.820]).into(),
-            text_color: Color::from([0.2, 0.2, 0.2]).into(),
+            text_color: Color::from([0.2, 0.2, 0.2]),
             border_width: 0.0,
             ..active
         }

@@ -85,7 +85,7 @@ impl Application for ChatApp {
 
                     Server::new(&server_name, vec![])
                 },
-                |server| AppMessage::UpdateServer(server),
+                AppMessage::UpdateServer,
             ),
         )
     }
@@ -119,7 +119,7 @@ impl Application for ChatApp {
             AppMessage::UpdateInterestString(new_value) => {
                 self.interests_string = new_value.clone();
                 let interests_vec: Vec<String> = new_value
-                    .split(",")
+                    .split(',')
                     .into_iter()
                     .map(|val| String::from(val.trim()))
                     .collect();
@@ -131,7 +131,7 @@ impl Application for ChatApp {
 
             AppMessage::UpdateServer(server) => self.server = Some(server),
             AppMessage::UpdateChat(chat_option) => {
-                self.chat_session = chat_option.clone();
+                self.chat_session = chat_option;
                 self.you_typing = TypingState::Idle;
                 self.stranger_typing = false;
             }
@@ -202,7 +202,7 @@ impl Application for ChatApp {
                             chat_clone.unwrap().send_message(&message).await;
                             message
                         },
-                        |msg| AppMessage::ChatSent(msg),
+                        AppMessage::ChatSent,
                     );
                 }
             }
