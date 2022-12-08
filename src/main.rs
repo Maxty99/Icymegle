@@ -1,12 +1,13 @@
 #![windows_subsystem = "windows"]
-mod style;
 
+use educe::Educe;
 use iced::time::{every, Duration, Instant};
+use iced::widget::scrollable::snap_to;
+use iced::widget::{button, row, scrollable, text, text_input, Column, Container, Row, Text};
 use iced::{
-    alignment, button, executor, scrollable, text_input, Alignment, Application, Button, Column,
-    Command, Container, Element, Length, Row, Scrollable, Settings, Subscription, Text, TextInput,
+    alignment, executor, Alignment, Application, Command, Element, Length, Settings, Subscription,
+    Theme,
 };
-
 use iced_native::subscription;
 use omegalul::server::{get_event_stream, get_random_server, Chat, ChatEvent, Server};
 
@@ -34,24 +35,16 @@ pub enum AppMessage {
     Disconnect,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Educe)]
+#[educe(Default)]
 enum TypingState {
     Typing(Instant),
+    #[educe(Default)]
     Idle,
-}
-
-impl Default for TypingState {
-    fn default() -> Self {
-        TypingState::Idle
-    }
 }
 
 #[derive(Default)]
 struct ChatApp {
-    // Themeing //
-    theme: style::Theme,
-
-    // Internal Data //
     chat_message: String,
     message_history: Vec<ChatMessage>,
     server: Option<Server>,
@@ -59,12 +52,6 @@ struct ChatApp {
     stranger_typing: bool,
     you_typing: TypingState,
     interests_string: String,
-
-    // States //
-    chat_input_state: text_input::State,
-    control_button_state: button::State,
-    interests_input_state: text_input::State,
-    scrollable_state: scrollable::State,
 }
 
 impl Application for ChatApp {
@@ -73,6 +60,8 @@ impl Application for ChatApp {
     type Message = AppMessage;
 
     type Flags = ();
+
+    type Theme = Theme;
 
     fn new(_flags: Self::Flags) -> (Self, Command<AppMessage>) {
         (
@@ -95,8 +84,10 @@ impl Application for ChatApp {
     }
 
     fn update(&mut self, message: Self::Message) -> Command<AppMessage> {
-        println!("{message:?}");
+        // TODO: Add theming
+        // println!("{message:?}"); TODO: Replace this with proper logging
         // TODO: Try to get rid of christmas trees by simplifying code a tad bit
+        let mut commands: Vec<Command<AppMessage>> = Vec::new();
         match message {
             AppMessage::UpdateChatMessage(new_value) => {
                 self.chat_message = new_value;
@@ -104,7 +95,7 @@ impl Application for ChatApp {
                     TypingState::Typing(_) => self.you_typing = TypingState::Typing(Instant::now()),
                     TypingState::Idle => {
                         let chat_clone = self.chat_session.clone();
-                        return Command::perform(
+                        commands.push(Command::perform(
                             async move {
                                 match chat_clone {
                                     Some(chat) => chat.start_typing().await,
@@ -112,7 +103,7 @@ impl Application for ChatApp {
                                 }
                             },
                             |_| AppMessage::StartTyping,
-                        );
+                        ));
                     }
                 }
             }
@@ -138,13 +129,13 @@ impl Application for ChatApp {
             AppMessage::StartNewChat => {
                 let server_clone = self.server.clone();
 
-                return Command::perform(
+                commands.push(Command::perform(
                     async move { server_clone.unwrap().start_chat().await },
                     |chat| match chat {
                         Ok(chat) => AppMessage::UpdateChat(Some(chat)),
                         Err(err) => AppMessage::ErrorOccured(format!("{err}")),
                     },
-                );
+                ));
             }
             AppMessage::ErrorOccured(error_string) => {
                 self.message_history.push(ChatMessage::System(error_string))
@@ -155,7 +146,7 @@ impl Application for ChatApp {
                         ChatEvent::Message(msg) => {
                             self.message_history.push(ChatMessage::Stranger(msg));
                             self.stranger_typing = false;
-                            self.scrollable_state.snap_to(1.0);
+                            commands.push(snap_to(scrollable::Id::new("chat_scroll"), 1.0));
                         }
                         ChatEvent::CommonLikes(likes) => {
                             self.message_history.push(ChatMessage::System(format!(
@@ -187,29 +178,29 @@ impl Application for ChatApp {
                 let chat_clone = self.chat_session.clone();
                 self.message_history
                     .push(ChatMessage::System("You have disconnected".to_string()));
-                return Command::perform(
+                commands.push(Command::perform(
                     async move { chat_clone.unwrap().disconnect().await },
                     |_| AppMessage::UpdateChat(None),
-                );
+                ));
             }
             AppMessage::SendChat => {
                 if !self.chat_message.is_empty() {
                     let chat_clone = self.chat_session.clone();
                     let message = self.chat_message.clone();
                     self.chat_message = "".to_string();
-                    return Command::perform(
+                    commands.push(Command::perform(
                         async move {
                             chat_clone.unwrap().send_message(&message).await;
                             message
                         },
                         AppMessage::ChatSent,
-                    );
+                    ));
                 }
             }
             AppMessage::ChatSent(message) => {
                 self.message_history.push(ChatMessage::You(message));
                 self.you_typing = TypingState::Idle;
-                self.scrollable_state.snap_to(1.0);
+                commands.push(snap_to(scrollable::Id::new("chat_scroll"), 1.0));
             }
             AppMessage::StartTyping => {
                 self.you_typing = TypingState::Typing(Instant::now());
@@ -219,7 +210,7 @@ impl Application for ChatApp {
                 if let TypingState::Typing(instant) = self.you_typing {
                     if instant.elapsed() > Duration::from_secs(4) {
                         // If I was just typing dont stop typing just keep checking every 5 seconds
-                        return Command::perform(
+                        commands.push(Command::perform(
                             async move {
                                 match chat_clone {
                                     Some(chat) => chat.stop_typing().await,
@@ -227,76 +218,65 @@ impl Application for ChatApp {
                                 }
                             },
                             |_| AppMessage::StoppedTyping,
-                        );
+                        ));
                     }
                 }
             }
             AppMessage::StoppedTyping => self.you_typing = TypingState::Idle,
-        }
+        };
 
-        Command::none()
+        Command::batch(commands)
     }
 
-    fn view(&mut self) -> Element<'_, AppMessage> {
+    fn view(&self) -> Element<'_, AppMessage> {
         let chat_input = match self.chat_session {
-            Some(_) => TextInput::new(
-                &mut self.chat_input_state,
+            Some(_) => text_input(
                 "Write a message",
                 self.chat_message.as_str(),
                 AppMessage::UpdateChatMessage,
             )
-            .style(self.theme)
             .on_submit(AppMessage::SendChat)
             .width(Length::FillPortion(7))
             .padding(10),
-            None => TextInput::new(
-                &mut self.chat_input_state,
+            None => text_input(
                 " Write a message",
                 self.chat_message.as_str(),
                 AppMessage::UpdateChatMessage,
             )
-            .style(self.theme)
             .width(Length::FillPortion(7))
             .padding(10),
         };
 
         let control_button = match self.chat_session {
-            Some(_) => Button::new(
-                &mut self.control_button_state,
-                Text::new("Disconnect")
+            Some(_) => button(
+                text("Disconnect")
                     .vertical_alignment(alignment::Vertical::Center)
                     .horizontal_alignment(alignment::Horizontal::Center),
             )
             .width(Length::FillPortion(3))
-            .on_press(AppMessage::Disconnect)
-            .style(self.theme),
-            None => Button::new(
-                &mut self.control_button_state,
-                Text::new("New Chat")
+            .on_press(AppMessage::Disconnect),
+
+            None => button(
+                text("New Chat")
                     .vertical_alignment(alignment::Vertical::Center)
                     .horizontal_alignment(alignment::Horizontal::Center),
             )
             .width(Length::FillPortion(3))
-            .on_press(AppMessage::StartNewChat)
-            .style(self.theme),
+            .on_press(AppMessage::StartNewChat),
         };
 
-        let chat_row = Row::new()
+        let chat_row = row![control_button, chat_input]
             .spacing(10)
             .height(Length::Units(50))
-            .width(Length::Fill)
-            .push(chat_input)
-            .push(control_button);
+            .width(Length::Fill);
 
-        let interests = TextInput::new(
-            &mut self.interests_input_state,
+        let interests = text_input(
             " Type some comma separeted interests (interest1, interest2, ...)",
             self.interests_string.as_str(),
             AppMessage::UpdateInterestString,
         )
         .width(Length::Fill)
-        .padding(10)
-        .style(style::InterestsTextInput);
+        .padding(10);
 
         let controls = Column::new()
             .width(Length::Fill)
@@ -318,16 +298,12 @@ impl Application for ChatApp {
                         ChatMessage::You(chat_message) => {
                             let label = Text::new("You: ");
                             let text = Text::new(chat_message);
-                            Row::new()
-                                .push(Container::new(label).style(style::YouContainer))
-                                .push(text)
+                            Row::new().push(Container::new(label)).push(text)
                         }
                         ChatMessage::Stranger(chat_message) => {
                             let label = Text::new("Stranger: ");
                             let text = Text::new(chat_message);
-                            Row::new()
-                                .push(Container::new(label).style(style::StrangerContainer))
-                                .push(text)
+                            Row::new().push(Container::new(label)).push(text)
                         }
                         ChatMessage::System(chat_message) => {
                             let label = Text::new("System: ");
@@ -343,8 +319,8 @@ impl Application for ChatApp {
                 false => Text::new(""),
             });
 
-        let chat_view = Scrollable::new(&mut self.scrollable_state)
-            .push(chat_history)
+        let chat_view = scrollable(chat_history)
+            .id(scrollable::Id::new("chat_scroll"))
             .height(Length::Fill);
 
         let ui = Column::new().push(chat_view).push(controls);
@@ -354,7 +330,6 @@ impl Application for ChatApp {
             .center_y()
             .height(Length::Fill)
             .width(Length::Fill)
-            .style(self.theme)
             .into()
     }
 
