@@ -18,4 +18,6 @@ iced =  { version = "0.6.0", features = ["tokio", "glow"] }
 omegalul = {git = "https://github.com/Maxty99/omegalul-rs", rev = "4cf8a88131a79d13331f452629a01e23efe51586"}
 iced_native = "0.7.0"
 dark-light = "0.2.2"
+native-dialog = "0.6.3"
+tokio = "1.23.0"
 educe = { version = "0.4.20", features = ["Default"], default-features = false }

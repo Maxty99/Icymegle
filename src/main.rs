@@ -1,16 +1,18 @@
 #![windows_subsystem = "windows"]
 
+use std::process::exit;
+
 use educe::Educe;
 use iced::time::{every, Duration, Instant};
 use iced::widget::scrollable::snap_to;
-use iced::widget::{button, row, scrollable, text, text_input, Column, Container, Row, Text};
+use iced::widget::{button, container, scrollable, text, text_input, Column, Text};
 use iced::{
-    alignment, executor, Alignment, Application, Command, Element, Length, Settings, Subscription,
-    Theme,
+    alignment, executor, Alignment, Application, Command, Element, Length, Subscription, Theme,
 };
-use iced_native::subscription;
+use iced_native::{column, row, subscription};
+use native_dialog::{MessageDialog, MessageType};
 use omegalul::server::{get_event_stream, get_random_server, Chat, ChatEvent, Server};
-
+use tokio::runtime::Runtime;
 #[derive(Debug, Clone)]
 enum ChatMessage {
     You(String),
@@ -18,19 +20,22 @@ enum ChatMessage {
     System(String),
 }
 
+struct InitData {
+    server: Server,
+}
+
 #[derive(Debug, Clone)]
 pub enum AppMessage {
     UpdateChatMessage(String),
     UpdateInterestString(String),
-    UpdateServer(Server),
     UpdateChat(Option<Chat>),
     HandleChatEvent(Vec<ChatEvent>),
     StartNewChat,
     SendChat,         // Used to send the command
     ChatSent(String), // Used when command finishes
     StartTyping,
-    StopTyping,    // Used to send the command
-    StoppedTyping, // Used when command finishes
+    CheckTyping,
+    StopTyping,
     ErrorOccured(String),
     Disconnect,
 }
@@ -42,12 +47,10 @@ enum TypingState {
     #[educe(Default)]
     Idle,
 }
-
-#[derive(Default)]
 struct ChatApp {
     chat_message: String,
     message_history: Vec<ChatMessage>,
-    server: Option<Server>,
+    server: Server,
     chat_session: Option<Chat>,
     stranger_typing: bool,
     you_typing: TypingState,
@@ -59,53 +62,49 @@ impl Application for ChatApp {
 
     type Message = AppMessage;
 
-    type Flags = ();
+    type Flags = InitData;
 
     type Theme = Theme;
 
-    fn new(_flags: Self::Flags) -> (Self, Command<AppMessage>) {
+    fn new(flags: Self::Flags) -> (Self, Command<AppMessage>) {
         (
-            Self::default(),
-            Command::perform(
-                async {
-                    // TODO: Simplify initialization, don't get server and server name in new function
-                    // use lazy once cell
-                    let server_name = get_random_server().await.unwrap_or("front1".to_string());
-
-                    Server::new(&server_name, vec![])
-                },
-                AppMessage::UpdateServer,
-            ),
+            Self {
+                server: flags.server,
+                chat_message: Default::default(),
+                message_history: Default::default(),
+                chat_session: Default::default(),
+                stranger_typing: Default::default(),
+                you_typing: Default::default(),
+                interests_string: Default::default(),
+            },
+            Command::none(),
         )
     }
-
+    
     fn title(&self) -> String {
         String::from("Icymegle")
     }
-
+    
     fn update(&mut self, message: Self::Message) -> Command<AppMessage> {
         // TODO: Add theming
-        // println!("{message:?}"); TODO: Replace this with proper logging
-        // TODO: Try to get rid of christmas trees by simplifying code a tad bit
+        println!("{message:?}"); //TODO: Replace this with proper logging
+       
         let mut commands: Vec<Command<AppMessage>> = Vec::new();
         match message {
-            AppMessage::UpdateChatMessage(new_value) => {
+            AppMessage::UpdateChatMessage(new_value) if self.chat_session.is_some() => {
                 self.chat_message = new_value;
-                match self.you_typing {
-                    TypingState::Typing(_) => self.you_typing = TypingState::Typing(Instant::now()),
-                    TypingState::Idle => {
-                        let chat_clone = self.chat_session.clone();
-                        commands.push(Command::perform(
-                            async move {
-                                match chat_clone {
-                                    Some(chat) => chat.start_typing().await,
-                                    None => {}
-                                }
-                            },
-                            |_| AppMessage::StartTyping,
-                        ));
-                    }
-                }
+                let chat = self.chat_session.clone().unwrap();
+                let is_typing = matches!(self.you_typing, TypingState::Typing(_));
+                commands.push(Command::perform(
+                    async move { if !is_typing {chat.start_typing().await} },
+                    |_| (AppMessage::StartTyping),
+                ));
+            }
+            AppMessage::StartTyping => {
+                self.you_typing = TypingState::Typing(Instant::now());
+            }
+            AppMessage::UpdateChatMessage(new_value) if self.chat_session.is_none() => {
+                self.chat_message = new_value;
             }
             AppMessage::UpdateInterestString(new_value) => {
                 self.interests_string = new_value.clone();
@@ -114,13 +113,9 @@ impl Application for ChatApp {
                     .into_iter()
                     .map(|val| String::from(val.trim()))
                     .collect();
-                match &mut self.server {
-                    Some(server) => server.set_interests(interests_vec),
-                    None => {}
-                }
+                self.server.set_interests(interests_vec);
             }
 
-            AppMessage::UpdateServer(server) => self.server = Some(server),
             AppMessage::UpdateChat(chat_option) => {
                 self.chat_session = chat_option;
                 self.you_typing = TypingState::Idle;
@@ -130,7 +125,7 @@ impl Application for ChatApp {
                 let server_clone = self.server.clone();
 
                 commands.push(Command::perform(
-                    async move { server_clone.unwrap().start_chat().await },
+                    async move { server_clone.start_chat().await },
                     |chat| match chat {
                         Ok(chat) => AppMessage::UpdateChat(Some(chat)),
                         Err(err) => AppMessage::ErrorOccured(format!("{err}")),
@@ -202,27 +197,22 @@ impl Application for ChatApp {
                 self.you_typing = TypingState::Idle;
                 commands.push(snap_to(scrollable::Id::new("chat_scroll"), 1.0));
             }
-            AppMessage::StartTyping => {
-                self.you_typing = TypingState::Typing(Instant::now());
-            }
-            AppMessage::StopTyping => {
+            AppMessage::CheckTyping => {
+                if matches!(self.you_typing, 
+                    // Are we typing?
+                    TypingState::Typing(instant) if 
+                    // Has it been 4 seconds?
+                    instant.elapsed() > Duration::from_secs(4)){
                 let chat_clone = self.chat_session.clone();
-                if let TypingState::Typing(instant) = self.you_typing {
-                    if instant.elapsed() > Duration::from_secs(4) {
-                        // If I was just typing dont stop typing just keep checking every 5 seconds
-                        commands.push(Command::perform(
-                            async move {
-                                match chat_clone {
-                                    Some(chat) => chat.stop_typing().await,
-                                    None => {}
-                                }
-                            },
-                            |_| AppMessage::StoppedTyping,
-                        ));
-                    }
+
+                commands.push(Command::perform(
+                    async move { if let Some(chat) = chat_clone {chat.stop_typing().await}},
+                    |_| AppMessage::StopTyping,
+                ));
                 }
             }
-            AppMessage::StoppedTyping => self.you_typing = TypingState::Idle,
+            AppMessage::StopTyping => self.you_typing = TypingState::Idle,
+            _ => {}
         };
 
         Command::batch(commands)
@@ -278,17 +268,13 @@ impl Application for ChatApp {
         .width(Length::Fill)
         .padding(10);
 
-        let controls = Column::new()
-            .width(Length::Fill)
-            .spacing(0)
-            .push(interests)
-            .push(chat_row);
+        let controls = column![interests, chat_row].width(Length::Fill).spacing(0);
 
         let chat_history: Column<AppMessage> = self
             .message_history
             .iter()
             .fold(
-                Column::new()
+                column![]
                     .spacing(10)
                     .padding(10)
                     .width(Length::Fill)
@@ -298,17 +284,17 @@ impl Application for ChatApp {
                         ChatMessage::You(chat_message) => {
                             let label = Text::new("You: ");
                             let text = Text::new(chat_message);
-                            Row::new().push(Container::new(label)).push(text)
+                            row![label, text]
                         }
                         ChatMessage::Stranger(chat_message) => {
                             let label = Text::new("Stranger: ");
                             let text = Text::new(chat_message);
-                            Row::new().push(Container::new(label)).push(text)
+                            row![label, text]
                         }
                         ChatMessage::System(chat_message) => {
                             let label = Text::new("System: ");
                             let text = Text::new(chat_message);
-                            Row::new().push(label).push(text)
+                            row![label, text]
                         }
                     };
                     column.push(text)
@@ -323,9 +309,9 @@ impl Application for ChatApp {
             .id(scrollable::Id::new("chat_scroll"))
             .height(Length::Fill);
 
-        let ui = Column::new().push(chat_view).push(controls);
+        let ui = column![chat_view, controls];
 
-        Container::new(ui)
+        container(ui)
             .center_x()
             .center_y()
             .height(Length::Fill)
@@ -343,15 +329,47 @@ impl Application for ChatApp {
             None => Subscription::none(),
         };
 
-        let typing_subscription = match &self.you_typing {
-            TypingState::Typing(_) => every(Duration::from_secs(5)).map(|_| AppMessage::StopTyping),
-            TypingState::Idle => Subscription::none(),
-        };
+        let typing_subscription = every(Duration::from_secs(2)).map(|_| AppMessage::CheckTyping);
 
         Subscription::batch(vec![message_subscription, typing_subscription])
     }
 }
 
 fn main() -> iced::Result {
-    ChatApp::run(Settings::default())
+    let rt = Runtime::new();
+    if rt.is_err() {
+        MessageDialog::new()
+            .set_type(MessageType::Error)
+            .set_title("Tokio Error")
+            .set_text(&format!(
+                "Tokio could not spawn runtime: \n {}",
+                rt.unwrap_err()
+            ))
+            .show_alert()
+            .unwrap(); // We're already off the happy path so who cares
+
+        // Something went very wrong so just exit since it likely
+        // means that iced won't be able to spawn the runtime either
+        exit(-1);
+    };
+    let server = rt.unwrap().block_on(async {
+        let server_name = get_random_server()
+            .await
+            .expect("Couldn't find omegle server");
+
+        Server::new(&server_name, vec![])
+    });
+    ChatApp::run(iced::Settings::<InitData> {
+        flags: InitData { server },
+
+        //..Default::default() doesnt work so this will have to do for now
+        id: None,
+        window: Default::default(),
+        default_font: None,
+        default_text_size: 20,
+        text_multithreading: false,
+        antialiasing: false,
+        exit_on_close_request: true,
+        try_opengles_first: false,
+    })
 }
