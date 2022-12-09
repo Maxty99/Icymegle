@@ -87,7 +87,6 @@ impl Application for ChatApp {
     
     fn update(&mut self, message: Self::Message) -> Command<AppMessage> {
         // TODO: Add theming
-        println!("{message:?}"); //TODO: Replace this with proper logging
        
         let mut commands: Vec<Command<AppMessage>> = Vec::new();
         match message {
